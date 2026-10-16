@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 from apps.claims.models import Claim
 from apps.items.models import Item
@@ -27,13 +28,27 @@ class Notification(models.Model):
 
 class Conversation(models.Model):
     item = models.ForeignKey(Item, on_delete=models.PROTECT, related_name='conversations')
-    claim = models.ForeignKey(Claim, on_delete=models.PROTECT, related_name='conversations')
+    claim = models.ForeignKey(Claim, on_delete=models.PROTECT, related_name='conversations', null=True, blank=True)
+    contact_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='item_contact_conversations',
+        null=True,
+        blank=True,
+    )
     participants = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='conversations')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=('claim',), name='one_conversation_per_claim')]
+        constraints = [
+            models.UniqueConstraint(fields=('claim',), name='one_conversation_per_claim'),
+            models.UniqueConstraint(
+                fields=('item', 'contact_user'),
+                condition=Q(claim__isnull=True, contact_user__isnull=False),
+                name='one_item_contact_conversation',
+            ),
+        ]
 
 
 class Message(models.Model):

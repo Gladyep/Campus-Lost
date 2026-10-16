@@ -102,6 +102,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .item-location span { padding-right: 5px; color: var(--coral); font-size: 14px; }
 .item-description { min-height: 36px; margin: 10px 0 13px; display: -webkit-box; overflow: hidden; color: #858d87; font-size: 11px; line-height: 1.6; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .item-card-footer { min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid #eff1ed; color: #9aa29c; font-size: 9px; }
+.status-badge { display: inline-block; margin-left: 8px; padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; color: #fff; }
+.status-badge.recovered { background: #2aa56a; }
 .claim-link { padding: 5px 0 0; border: 0; background: transparent; color: var(--green); font-size: 10px; font-weight: 650; cursor: pointer; }
 .claim-link span { padding-left: 5px; color: var(--coral); }
 .empty-state, .resource-empty { padding: 58px 20px; text-align: center; }

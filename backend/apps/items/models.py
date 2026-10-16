@@ -27,6 +27,7 @@ class Item(models.Model):
         CLAIM_PENDING = 'CLAIM_PENDING', 'Claim pending'
         UNDER_VERIFICATION = 'UNDER_VERIFICATION', 'Under verification'
         RETURNED = 'RETURNED', 'Returned'
+        RECOVERED = 'RECOVERED', 'Recovered'
         CLOSED = 'CLOSED', 'Closed'
         DISPUTED = 'DISPUTED', 'Disputed'
 

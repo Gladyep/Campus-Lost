@@ -4,6 +4,7 @@ import { login, register } from './api/auth.js'
 import { getItems, createItem } from './api/items.js'
 import { getResource, getResourceCount, markNotificationRead, decideReport } from './api/resources.js'
 import VisualSearch from './VisualSearch.jsx'
+import { request } from './api/client.js'
 import './Campus.css'
 
 const sampleItems = [
@@ -89,15 +90,18 @@ function App() {
         if (view === 'Discover' || view === 'My reports') {
           const params = new URLSearchParams()
           if (search) params.set('search', search)
-          if (typeFilter !== 'ALL' && view === 'Discover') params.set('item_type', typeFilter)
-          if (categoryFilter !== 'All categories' && view === 'Discover') params.set('category_name', categoryFilter)
-          if (view === 'My reports') params.set('mine', 'true')
-          const result = await getItems(params, auth?.access)
-          if (active) {
-            setItems(result.rows)
-            setBackendOnline(true)
-          }
-        } else {
+                  if (view === 'Discover') {
+                    if (typeFilter === 'RECOVERED') params.set('status', 'RECOVERED')
+                    else if (typeFilter !== 'ALL') params.set('item_type', typeFilter)
+                  }
+                  if (categoryFilter !== 'All categories' && view === 'Discover') params.set('category_name', categoryFilter)
+                  if (view === 'My reports') params.set('mine', 'true')
+                  const result = await getItems(params, auth?.access)
+                  if (active) {
+                    setItems(result.rows)
+                    setBackendOnline(true)
+                  }
+                } else {
           const endpoints = { Matches: 'matches/', Messages: 'conversations/', Alerts: 'notifications/', 'Admin dashboard': 'admin/dashboard/' }
           const result = await getResource(endpoints[view], auth?.access)
           if (active) {
@@ -196,6 +200,38 @@ function App() {
     }
   }
 
+  async function contactReporter(item) {
+    if (!auth?.access) {
+      setAuthOpen(true)
+      setNotice('Sign in to contact the reporter.')
+      return
+    }
+    try {
+      await request('conversations/', { method: 'POST', body: JSON.stringify({ item: item.id }), token: auth.access })
+      setView('Messages')
+      setNotice('Conversation started. Check Messages for replies.')
+    } catch (error) {
+      setNotice(error.message)
+    }
+  }
+
+  async function markRecovered(item) {
+    if (!auth?.access) {
+      setAuthOpen(true)
+      setNotice('Sign in to manage your report.')
+      return
+    }
+    const ok = window.confirm('Confirm marking this report as recovered. This will archive it from active lists.')
+    if (!ok) return
+    try {
+      const updated = await request(`items/${item.id}/recover/`, { method: 'POST', token: auth.access })
+      setItems((rows) => rows.map((r) => (r.id === updated.id ? updated : r)))
+      setNotice('Report marked as recovered.')
+    } catch (error) {
+      setNotice(error.message)
+    }
+  }
+
   async function markAlertRead(id) {
     try {
       await markNotificationRead(id, auth?.access)
@@ -272,12 +308,12 @@ function App() {
 
         {view === 'Visual Search' ? <VisualSearch auth={auth} onSignIn={() => setAuthOpen(true)} onClaim={claimItem} /> : view === 'Discover' || (view === 'My reports' && auth) ? <>
           <div className="toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search an item, place, or detail" aria-label="Search reports" /><kbd>/</kbd></label><label className="category-select"><span className="sr-only">Filter by category</span><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>All categories</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label><button className="report-button" onClick={() => { setReportType('LOST'); setReportOpen(true) }}><span aria-hidden="true">＋</span> Report an item</button></div>
-          <div className="filter-row"><div className="segmented" role="group" aria-label="Filter by report type">{[['ALL', 'Everything'], ['LOST', 'Lost'], ['FOUND', 'Found']].map(([value, label]) => <button key={value} className={typeFilter === value ? 'segment selected' : 'segment'} onClick={() => setTypeFilter(value)}>{label}</button>)}</div><span className="result-count">{loading ? 'Updating…' : `${visibleItems.length} reports`}</span></div>
+          <div className="filter-row"><div className="segmented" role="group" aria-label="Filter by report type">{[['ALL', 'Everything'], ['LOST', 'Lost'], ['FOUND', 'Found'], ['RECOVERED', 'Recovered']].map(([value, label]) => <button key={value} className={typeFilter === value ? 'segment selected' : 'segment'} onClick={() => setTypeFilter(value)}>{label}</button>)}</div><span className="result-count">{loading ? 'Updating…' : `${visibleItems.length} reports`}</span></div>
           {!backendOnline && view === 'Discover' && <p className="preview-note">Showing example listings while the Django API is offline.</p>}
           <section className="item-grid" aria-label="Item reports">
             {visibleItems.map((item, index) => <article className="item-card" key={item.id} style={{ '--card-delay': `${index * 55}ms` }}>
               <div className="item-image-wrap">{itemImage(item) ? <img className="item-image" src={itemImage(item)} alt={item.title} loading="lazy" /> : <div className={`image-placeholder tone-${index % 4}`} aria-hidden="true"><span>{(item.category_name || 'Campus').slice(0, 1)}</span></div>}<span className={`type-tag ${item.item_type === 'FOUND' ? 'found' : 'lost'}`}><i />{item.item_type === 'FOUND' ? 'Found' : 'Lost'}</span><span className="image-date">{dateLabel(item.event_date)}</span></div>
-              <div className="item-card-body"><div className="item-category">{item.category_name || item.category?.name || 'Campus item'}</div><h3>{item.title}</h3><p className="item-location"><span aria-hidden="true">⌖</span>{item.location}</p><p className="item-description">{item.description}</p><div className="item-card-footer"><span>{item.status === 'RETURNED' ? 'Reunited' : 'Campus report'}</span>{item.item_type === 'FOUND' && <button className="claim-link" onClick={() => claimItem(item)}>That might be mine <span aria-hidden="true">↗</span></button>}</div></div>
+              <div className="item-card-body"><div className="item-category">{item.category_name || item.category?.name || 'Campus item'}</div><h3>{item.title}</h3><p className="item-location"><span aria-hidden="true">⌖</span>{item.location}</p><p className="item-description">{item.description}</p><div className="item-card-footer"><span>{item.status === 'RETURNED' ? 'Reunited' : 'Campus report'}</span>{item.status === 'RECOVERED' && <span className="status-badge recovered">Recovered</span>}{item.item_type === 'FOUND' && <button className="claim-link" onClick={() => claimItem(item)}>That might be mine <span aria-hidden="true">↗</span></button>}{!(item.status === 'RECOVERED' || item.status === 'RETURNED' || item.status === 'CLOSED') && <button className="claim-link" onClick={() => contactReporter(item)}>Contact reporter <span aria-hidden="true">↗</span></button>}{item.is_reporter && item.status !== 'RECOVERED' && item.status !== 'RETURNED' && item.status !== 'CLOSED' && <button className="text-button" onClick={() => markRecovered(item)}>Mark recovered</button>}</div></div>
             </article>)}
           </section>
           {!visibleItems.length && <div className="empty-state"><span className="empty-mark">⌕</span><h3>No reports found</h3><p>Try another search or remove a filter.</p><button className="text-button" onClick={() => { setSearch(''); setCategoryFilter('All categories'); setTypeFilter('ALL') }}>Clear filters</button></div>}

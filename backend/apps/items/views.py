@@ -1,5 +1,5 @@
 from django.db.models import Q
-from rest_framework import permissions, viewsets
+from rest_framework import decorators, permissions, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -72,12 +72,14 @@ class ItemViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(reporter=self.request.user)
         else:
             queryset = queryset.exclude(status__in=(Item.Status.CLOSED, Item.Status.RETURNED))
-        item_type = self.request.query_params.get('item_type') or self.request.query_params.get('type')
-        if item_type in Item.Type.values:
-            queryset = queryset.filter(item_type=item_type)
         status_filter = self.request.query_params.get('status')
         if status_filter in Item.Status.values:
             queryset = queryset.filter(status=status_filter)
+        item_type = self.request.query_params.get('item_type') or self.request.query_params.get('type')
+        if item_type in Item.Type.values:
+            queryset = queryset.filter(item_type=item_type)
+            if status_filter != Item.Status.RECOVERED:
+                queryset = queryset.exclude(status=Item.Status.RECOVERED)
         category = self.request.query_params.get('category_name') or self.request.query_params.get('category')
         if category:
             queryset = queryset.filter(Q(category__name__iexact=category) | Q(category__slug__iexact=category))
@@ -107,3 +109,14 @@ class ItemViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         instance.status = Item.Status.CLOSED
         instance.save(update_fields=('status', 'updated_at'))
+
+    @decorators.action(detail=True, methods=('post',), url_path='recover')
+    def recover(self, request, pk=None):
+        item = self.get_object()
+        if item.reporter_id != request.user.id and not request.user.is_staff:
+            raise PermissionDenied('Only the report owner or a moderator may mark this item recovered.')
+        if item.status in (Item.Status.RECOVERED, Item.Status.RETURNED, Item.Status.CLOSED):
+            raise ValidationError({'status': 'This report can no longer be marked recovered.'})
+        item.status = Item.Status.RECOVERED
+        item.save(update_fields=('status', 'updated_at'))
+        return Response(self.get_serializer(item).data)

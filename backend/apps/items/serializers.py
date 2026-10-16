@@ -22,14 +22,19 @@ class ItemSerializer(serializers.ModelSerializer):
     images = ItemImageSerializer(many=True, read_only=True)
     image = serializers.ImageField(write_only=True, required=False)
     reporter_name = serializers.CharField(source='reporter.name', read_only=True)
+    is_reporter = serializers.SerializerMethodField()
 
     class Meta:
         model = Item
         fields = (
-            'id', 'reporter_name', 'category', 'category_name', 'title', 'description',
+            'id', 'reporter_name', 'is_reporter', 'category', 'category_name', 'title', 'description',
             'item_type', 'location', 'event_date', 'status', 'images', 'image', 'created_at', 'updated_at',
         )
-        read_only_fields = ('id', 'reporter_name', 'status', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'reporter_name', 'is_reporter', 'status', 'created_at', 'updated_at')
+
+    def get_is_reporter(self, item):
+        request = self.context.get('request')
+        return bool(request and request.user.is_authenticated and request.user.pk == item.reporter_id)
 
     def validate_image(self, image):
         if image.size > 5 * 1024 * 1024:
