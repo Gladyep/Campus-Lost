@@ -10,15 +10,16 @@ NOTIFICATION_THRESHOLD = 65
 
 
 def score_items(first, second):
-    category_score = 30 if first.category_id == second.category_id else 0
+    category_score = 25 if first.category_id == second.category_id else 0
+    title_score = 10 * SequenceMatcher(None, first.title.casefold(), second.title.casefold()).ratio()
     first_words = {word.casefold() for word in first.description.split() if len(word) > 2}
     second_words = {word.casefold() for word in second.description.split() if len(word) > 2}
     union = first_words | second_words
-    description_score = 30 * len(first_words & second_words) / len(union) if union else 0
+    description_score = 25 * len(first_words & second_words) / len(union) if union else 0
     location_score = 20 * SequenceMatcher(None, first.location.casefold(), second.location.casefold()).ratio()
     days_apart = abs((first.event_date - second.event_date).days)
     date_score = 20 * max(0, 1 - days_apart / 31)
-    return round(category_score + description_score + location_score + date_score, 2)
+    return round(category_score + title_score + description_score + location_score + date_score, 2)
 
 
 @transaction.atomic
@@ -47,7 +48,9 @@ def evaluate_matches(item):
                     defaults={
                         'user': recipient,
                         'kind': Notification.Kind.MATCH,
+                        'title': 'Potential item match',
                         'message': 'A possible match was found for one of your reports.',
                         'item': related_item,
+                        'match': match,
                     },
                 )

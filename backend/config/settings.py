@@ -83,7 +83,9 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 frontend_origin = os.getenv('FRONTEND_ORIGIN', 'http://localhost:5173')
-CORS_ALLOWED_ORIGINS = [origin.strip() for origin in frontend_origin.split(',') if origin.strip()]
+CORS_ALLOWED_ORIGINS = list(dict.fromkeys(origin.strip() for origin in frontend_origin.split(',') if origin.strip()))
+if DEBUG:
+    CORS_ALLOWED_ORIGINS = list(dict.fromkeys((*CORS_ALLOWED_ORIGINS, 'http://localhost:5173', 'http://127.0.0.1:5173')))
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework_simplejwt.authentication.JWTAuthentication'],

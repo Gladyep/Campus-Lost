@@ -13,10 +13,45 @@ from .serializers import ConversationSerializer, MessageSerializer, Notification
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
     permission_classes = (permissions.IsAuthenticated,)
-    http_method_names = ('get', 'patch', 'head', 'options')
+    http_method_names = ('get', 'patch', 'delete', 'head', 'options')
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user)
+        queryset = Notification.objects.filter(user=self.request.user).select_related(
+            'item', 'claim__item', 'conversation', 'match', 'moderation_report',
+        )
+        category = self.request.query_params.get('category')
+        category_kinds = {
+            'lost-found': (Notification.Kind.REPORT, Notification.Kind.STATUS),
+            'matches': (Notification.Kind.MATCH,),
+            'claims': (Notification.Kind.CLAIM,),
+            'messages': (Notification.Kind.MESSAGE,),
+            'system': (Notification.Kind.MODERATION,),
+        }
+        if category in category_kinds:
+            queryset = queryset.filter(kind__in=category_kinds[category])
+        return queryset
+
+    @decorators.action(detail=False, methods=('get',), url_path='unread-count')
+    def unread_count(self, request):
+        count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return response.Response({'count': count})
+
+    @decorators.action(detail=False, methods=('patch',), url_path='read-all')
+    def read_all(self, request):
+        updated = Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return response.Response({'updated': updated, 'unread_count': 0})
+
+    @decorators.action(detail=False, methods=('delete',), url_path='clear-read')
+    def clear_read(self, request):
+        deleted, _ = Notification.objects.filter(user=request.user, is_read=True).delete()
+        return response.Response({'deleted': deleted})
+
+    @decorators.action(detail=True, methods=('patch',), url_path='read')
+    def read(self, request, pk=None):
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save(update_fields=('is_read',))
+        return response.Response(self.get_serializer(notification).data)
 
     def partial_update(self, request, *args, **kwargs):
         notification = self.get_object()
@@ -73,16 +108,20 @@ class ConversationViewSet(viewsets.ModelViewSet):
         text = strip_tags(raw_text).strip()
         if not text or len(text) > 2000:
             raise ValidationError({'message_text': 'Messages must contain 1 to 2000 characters.'})
-        message = Message.objects.create(conversation=conversation, sender=request.user, message_text=text)
-        conversation.updated_at = timezone.now()
-        conversation.save(update_fields=('updated_at',))
-        Notification.objects.get_or_create(
-            dedupe_key=f'message-{message.pk}',
-            defaults={
-                'user': conversation.participants.exclude(pk=request.user.pk).first(),
-                'kind': Notification.Kind.MESSAGE,
-                'message': 'You have a new message about an item report.',
-                'item': conversation.item,
-            },
-        )
+        with transaction.atomic():
+            message = Message.objects.create(conversation=conversation, sender=request.user, message_text=text)
+            conversation.updated_at = timezone.now()
+            conversation.save(update_fields=('updated_at',))
+            for recipient in conversation.participants.exclude(pk=request.user.pk):
+                Notification.objects.get_or_create(
+                    dedupe_key=f'message-{message.pk}-{recipient.pk}',
+                    defaults={
+                        'user': recipient,
+                        'kind': Notification.Kind.MESSAGE,
+                        'title': f'New message about {conversation.item.title[:100]}',
+                        'message': 'A campus member sent a message about this item report.',
+                        'item': conversation.item,
+                        'conversation': conversation,
+                    },
+                )
         return response.Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)

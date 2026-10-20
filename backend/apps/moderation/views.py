@@ -24,7 +24,11 @@ class ReportViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         if not serializer.validated_data.get('item') and not serializer.validated_data.get('reported_user'):
             raise ValidationError('A report must identify an item or a user.')
-        serializer.save(reporter=self.request.user)
+        with transaction.atomic():
+            report = serializer.save(reporter=self.request.user)
+            from apps.communication.services import notify_moderation_report_created
+
+            notify_moderation_report_created(report, self.request.user)
 
 
 class AdminDashboardView(APIView):
@@ -71,4 +75,7 @@ class ReportDecisionView(APIView):
             report.reviewed_at = timezone.now()
             report.save(update_fields=('status', 'decision_reason', 'reviewed_by', 'reviewed_at'))
             AuditLog.objects.create(actor=request.user, action=f'report_{decision.lower()}', entity_type='report', entity_id=str(report.pk), metadata={'reason': reason})
+            from apps.communication.services import notify_moderation_report_decision
+
+            notify_moderation_report_decision(report, request.user)
         return Response(ReportSerializer(report).data, status=status.HTTP_200_OK)

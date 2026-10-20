@@ -17,7 +17,7 @@ function dateLabel(date) {
   return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T12:00:00`))
 }
 
-function VisualSearch({ auth, onSignIn, onClaim }) {
+function VisualSearch({ auth, onSignIn, onClaim, onContactReporter, onEditReport, onDeleteReport, onMarkRecovered, deletingItemId }) {
   const [selectedImage, setSelectedImage] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [category, setCategory] = useState('')
@@ -85,6 +85,20 @@ function VisualSearch({ auth, onSignIn, onClaim }) {
     setSearched(false)
     setError('')
     if (fileInput.current) fileInput.current.value = ''
+  }
+
+  async function deleteResult(item) {
+    if (await onDeleteReport(item)) {
+      setResults((rows) => rows.filter((row) => String(row.id) !== String(item.id)))
+      setDetailsItem(null)
+    }
+  }
+
+  async function recoverResult(item) {
+    if (await onMarkRecovered(item)) {
+      setResults((rows) => rows.filter((row) => String(row.id) !== String(item.id)))
+      setDetailsItem(null)
+    }
   }
 
   function handleDrop(event) {
@@ -183,17 +197,18 @@ function VisualSearch({ auth, onSignIn, onClaim }) {
             <h3>{item.title}</h3>
             <p className="item-location"><span aria-hidden="true">⌖</span>{item.location}</p>
             <p className="visual-result-date">Reported {dateLabel(item.event_date)}</p>
-            <div className="visual-result-footer"><span>{item.status?.replaceAll('_', ' ') || 'Status unavailable'}</span><button className="visual-detail-button" type="button" onClick={() => setDetailsItem(item)}>View Details</button></div>
+            <div className="visual-result-footer"><span>{item.status?.replaceAll('_', ' ') || 'Status unavailable'}</span><button className="visual-detail-button" type="button" onClick={() => setDetailsItem(item)}>View Details</button>{itemIsOwnedBy(item, auth?.user) ? <><button className="claim-link" type="button" onClick={() => onEditReport(item)}>Edit Report</button><button className="delete-report-button" type="button" disabled={deletingItemId === String(item.id)} onClick={() => deleteResult(item)}>{deletingItemId === String(item.id) ? 'Deleting…' : 'Delete Report'}</button><button className="text-button" type="button" onClick={() => recoverResult(item)}>Mark recovered</button></> : <button className="claim-link" type="button" onClick={() => auth?.access ? onContactReporter(item) : onSignIn()}>Contact Reporter</button>}</div>
           </div>
         </article>)}
       </div>
     </section>}
 
-    {detailsItem && <ItemDetailsDialog item={detailsItem} onClose={() => setDetailsItem(null)} onClaim={onClaim} />}
+    {detailsItem && <ItemDetailsDialog item={detailsItem} onClose={() => setDetailsItem(null)} onClaim={onClaim} onContactReporter={onContactReporter} onEditReport={onEditReport} onDeleteReport={deleteResult} onMarkRecovered={recoverResult} deletingItemId={deletingItemId} auth={auth} onSignIn={onSignIn} />}
   </section>
 }
 
-function ItemDetailsDialog({ item, onClose, onClaim }) {
+function ItemDetailsDialog({ item, onClose, onClaim, onContactReporter, onEditReport, onDeleteReport, onMarkRecovered, deletingItemId, auth, onSignIn }) {
+  const isOwner = itemIsOwnedBy(item, auth?.user)
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <section className="dialog visual-details-dialog" role="dialog" aria-modal="true" aria-labelledby="visual-details-title">
       <button className="dialog-close" type="button" onClick={onClose} aria-label="Close">×</button>
@@ -204,9 +219,14 @@ function ItemDetailsDialog({ item, onClose, onClaim }) {
       <dl className="visual-details-list"><div><dt>Found at</dt><dd>{item.location}</dd></div><div><dt>Date reported</dt><dd>{dateLabel(item.event_date)}</dd></div><div><dt>Status</dt><dd>{item.status?.replaceAll('_', ' ') || 'Unavailable'}</dd></div></dl>
       <p className="visual-details-description">{item.description}</p>
       <p className="visual-results-caveat">Visual similarity is a suggestion, not a guarantee of ownership.</p>
-      <button className="form-submit" type="button" onClick={() => onClaim(item)}>That might be mine <span aria-hidden="true">↗</span></button>
+      <div className="visual-details-actions">{isOwner ? <><button className="visual-detail-button" type="button" onClick={() => onEditReport(item)}>Edit Report</button><button className="delete-report-button" type="button" disabled={deletingItemId === String(item.id)} onClick={() => onDeleteReport(item)}>{deletingItemId === String(item.id) ? 'Deleting…' : 'Delete Report'}</button><button className="text-button" type="button" onClick={() => onMarkRecovered(item)}>Mark recovered</button></> : <><button className="form-submit" type="button" onClick={() => auth?.access ? onClaim(item) : onSignIn()}>That might be mine <span aria-hidden="true">↗</span></button><button className="visual-detail-button" type="button" onClick={() => auth?.access ? onContactReporter(item) : onSignIn()}>Contact Reporter</button></>}</div>
     </section>
   </div>
+}
+
+function itemIsOwnedBy(item, user) {
+  if (item?.is_reporter === true) return true
+  return user?.id != null && item?.reporter_id != null && String(user.id) === String(item.reporter_id)
 }
 
 export default VisualSearch

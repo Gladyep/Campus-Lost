@@ -4,10 +4,20 @@ from .models import Conversation, Message, Notification
 
 
 class NotificationSerializer(serializers.ModelSerializer):
+    title = serializers.SerializerMethodField()
+    item_title = serializers.CharField(source='item.title', read_only=True, default='')
+    item_status = serializers.CharField(source='item.status', read_only=True, default='')
+    claim_status = serializers.CharField(source='claim.status', read_only=True, default='')
+    claim_item = serializers.IntegerField(source='claim.item_id', read_only=True, default=None)
+    claim_item_title = serializers.CharField(source='claim.item.title', read_only=True, default='')
+
     class Meta:
         model = Notification
-        fields = ('id', 'kind', 'message', 'item', 'is_read', 'created_at')
-        read_only_fields = ('id', 'kind', 'message', 'item', 'created_at')
+        fields = ('id', 'kind', 'title', 'message', 'item', 'item_title', 'item_status', 'claim', 'claim_status', 'claim_item', 'claim_item_title', 'conversation', 'match', 'moderation_report', 'is_read', 'created_at')
+        read_only_fields = ('id', 'kind', 'title', 'message', 'item', 'item_title', 'item_status', 'claim', 'claim_status', 'claim_item', 'claim_item_title', 'conversation', 'match', 'moderation_report', 'created_at')
+
+    def get_title(self, notification):
+        return notification.title or notification.get_kind_display()
 
 
 class MessageSerializer(serializers.ModelSerializer):

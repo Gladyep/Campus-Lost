@@ -93,9 +93,8 @@ def search_found_items(uploaded_image, *, category='', location='', event_date='
     query_signature = _image_signature(uploaded_image)
     candidates = Item.objects.filter(
         item_type=Item.Type.FOUND,
+        status=Item.Status.OPEN,
         images__isnull=False,
-    ).exclude(
-        status__in=(Item.Status.CLOSED, Item.Status.RETURNED),
     ).select_related(
         'category',
     ).prefetch_related(

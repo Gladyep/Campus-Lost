@@ -26,9 +26,16 @@ class ClaimViewSet(viewsets.ModelViewSet):
             if Claim.objects.filter(item=item, claimant=self.request.user).exists():
                 raise ValidationError({'item': 'You already submitted a claim for this item.'})
             claim = serializer.save()
+            from apps.communication.services import notify_claim_submitted
+
+            notify_claim_submitted(claim, self.request.user)
             if item.status == Item.Status.OPEN:
+                previous_status = item.status
                 item.status = Item.Status.CLAIM_PENDING
                 item.save(update_fields=('status', 'updated_at'))
+                from apps.communication.services import notify_item_status
+
+                notify_item_status(item, previous_status, self.request.user)
 
     def _assert_participant(self, claim):
         if not self.request.user.is_staff and self.request.user.id not in (claim.claimant_id, claim.item.reporter_id):
@@ -63,10 +70,16 @@ class ClaimViewSet(viewsets.ModelViewSet):
                     raise ValidationError({'answer_text': 'Answers cannot be empty.'})
                 saved.append(entry)
         if claim.status == Claim.Status.PENDING:
-            claim.status = Claim.Status.UNDER_VERIFICATION
-            claim.save(update_fields=('status',))
-            claim.item.status = Item.Status.UNDER_VERIFICATION
-            claim.item.save(update_fields=('status', 'updated_at'))
+            with transaction.atomic():
+                claim.status = Claim.Status.UNDER_VERIFICATION
+                claim.save(update_fields=('status',))
+                from apps.communication.services import notify_claim_answers, notify_item_status
+
+                notify_claim_answers(claim, request.user)
+                previous_status = claim.item.status
+                claim.item.status = Item.Status.UNDER_VERIFICATION
+                claim.item.save(update_fields=('status', 'updated_at'))
+                notify_item_status(claim.item, previous_status, request.user)
         return response.Response(ClaimAnswerSerializer(saved, many=True).data, status=status.HTTP_201_CREATED)
 
     @decorators.action(detail=True, methods=('patch',), url_path='decision')
@@ -82,14 +95,27 @@ class ClaimViewSet(viewsets.ModelViewSet):
                 raise ValidationError({'status': 'Choose a valid claim decision.'})
             if claim.status in {Claim.Status.APPROVED, Claim.Status.REJECTED}:
                 raise ValidationError({'status': 'This claim has already received a final decision.'})
+            previous_claim_status = claim.status
             claim.status = next_status
             claim.reviewed_by = request.user
             claim.reviewed_at = timezone.now()
             claim.decision_reason = str(request.data.get('reason', '')).strip()[:500]
             claim.save(update_fields=('status', 'reviewed_by', 'reviewed_at', 'decision_reason'))
+            if previous_claim_status != next_status:
+                from apps.communication.services import notify_claimant_update
+
+                notify_claimant_update(
+                    claim,
+                    request.user,
+                    requested_information=(next_status == Claim.Status.UNDER_VERIFICATION and request.user.id == claim.item.reporter_id),
+                )
             if next_status == Claim.Status.APPROVED:
+                previous_status = claim.item.status
                 claim.item.status = Item.Status.CLAIM_PENDING
                 claim.item.save(update_fields=('status', 'updated_at'))
+                from apps.communication.services import notify_item_status
+
+                notify_item_status(claim.item, previous_status, request.user)
             from apps.moderation.models import AuditLog
 
             AuditLog.objects.create(actor=request.user, action=f'claim_{next_status.lower()}', entity_type='claim', entity_id=str(claim.pk), metadata={'reason': claim.decision_reason})

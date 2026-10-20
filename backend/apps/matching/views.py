@@ -14,4 +14,7 @@ class MatchViewSet(viewsets.ReadOnlyModelViewSet):
             Q(lost_item__reporter=self.request.user) | Q(found_item__reporter=self.request.user)
         ).filter(
             lost_item__status='OPEN', found_item__status='OPEN'
-        ).select_related('lost_item', 'found_item').order_by('-match_score')
+        ).select_related(
+            'lost_item__category', 'lost_item__reporter',
+            'found_item__category', 'found_item__reporter',
+        ).prefetch_related('lost_item__images', 'found_item__images').order_by('-match_score')

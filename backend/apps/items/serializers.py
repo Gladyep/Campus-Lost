@@ -1,5 +1,6 @@
 from PIL import Image as PillowImage, UnidentifiedImageError
 from rest_framework import serializers
+from django.utils import timezone
 
 from .models import Category, Item, ItemImage
 
@@ -21,16 +22,17 @@ class ItemSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     images = ItemImageSerializer(many=True, read_only=True)
     image = serializers.ImageField(write_only=True, required=False)
+    reporter_id = serializers.IntegerField(read_only=True)
     reporter_name = serializers.CharField(source='reporter.name', read_only=True)
     is_reporter = serializers.SerializerMethodField()
 
     class Meta:
         model = Item
         fields = (
-            'id', 'reporter_name', 'is_reporter', 'category', 'category_name', 'title', 'description',
+            'id', 'reporter_id', 'reporter_name', 'is_reporter', 'category', 'category_name', 'title', 'description',
             'item_type', 'location', 'event_date', 'status', 'images', 'image', 'created_at', 'updated_at',
         )
-        read_only_fields = ('id', 'reporter_name', 'is_reporter', 'status', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'reporter_id', 'reporter_name', 'is_reporter', 'status', 'created_at', 'updated_at')
 
     def get_is_reporter(self, item):
         request = self.context.get('request')
@@ -49,6 +51,11 @@ class ItemSerializer(serializers.ModelSerializer):
         except (UnidentifiedImageError, OSError, ValueError):
             raise serializers.ValidationError('The uploaded file is not a valid image.')
         return image
+
+    def validate_event_date(self, event_date):
+        if event_date > timezone.localdate():
+            raise serializers.ValidationError('The report date cannot be in the future.')
+        return event_date
 
     def create(self, validated_data):
         image = validated_data.pop('image', None)
