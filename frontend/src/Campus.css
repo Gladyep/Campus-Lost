@@ -255,6 +255,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .lost-search-form { padding: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; border: 1px solid #e8dfd9; border-radius: 8px; background: var(--surface); }
 .lost-search-form label { min-width: 0; display: grid; align-content: start; gap: 6px; color: #5d5559; font-size: 11px; font-weight: 650; }
 .lost-search-form input, .lost-search-form select { width: 100%; min-width: 0; min-height: 41px; padding: 8px 10px; border: 1px solid #e4dbd5; border-radius: 5px; background: #fffdfa; color: var(--ink); font: inherit; font-size: 11px; }
+.lost-search-category-error { color: #9b3434; font-size: 10px; font-weight: 450; line-height: 1.4; }
 .lost-search-keyword { grid-column: span 2; }
 .lost-search-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; }
 .lost-search-actions .report-button { min-width: 165px; }

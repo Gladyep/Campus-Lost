@@ -26,19 +26,44 @@ class ItemDeletionConflict(APIException):
 
 
 @require_GET
-def search_found_reports(request):
+def search_item_reports(request):
     queryset = Item.objects.filter(
-        item_type=Item.Type.FOUND,
         status=Item.Status.OPEN,
     ).select_related('category').prefetch_related('images').order_by('-created_at')
 
     query = request.GET.get('q', '').strip()
     if query:
-        queryset = queryset.filter(Q(title__icontains=query) | Q(description__icontains=query))
+        for term in query.split():
+            queryset = queryset.filter(
+                Q(title__icontains=term) |
+                Q(description__icontains=term) |
+                Q(location__icontains=term)
+            )
 
-    category = request.GET.get('category', '').strip()
+    category = ' '.join(request.GET.get('category', '').split())
     if category:
-        queryset = queryset.filter(Q(category__name__iexact=category) | Q(category__slug__iexact=category))
+        if category.isdecimal():
+            category_id = int(category)
+            if category_id > 2**63 - 1:
+                queryset = queryset.none()
+            else:
+                queryset = queryset.filter(category_id=category_id)
+        else:
+            queryset = queryset.filter(
+                Q(category__name__iexact=category) |
+                Q(category__slug__iexact=category)
+            )
+
+    item_type = (
+        request.GET.get('item_type') or
+        request.GET.get('type') or
+        request.GET.get('report_type') or
+        ''
+    ).strip().upper()
+    if item_type and item_type != 'ALL':
+        if item_type not in Item.Type.values:
+            return JsonResponse({'type': 'Choose LOST, FOUND, or ALL.'}, status=400)
+        queryset = queryset.filter(item_type=item_type)
 
     location = request.GET.get('location', '').strip()
     if location:
@@ -73,7 +98,9 @@ def search_found_reports(request):
             'reporter_id': item.reporter_id,
             'description': item.description,
             'item_type': item.item_type,
+            'category_id': item.category_id,
             'category_name': item.category.name,
+            'category_slug': item.category.slug,
             'location': item.location,
             'event_date': item.event_date.isoformat(),
             'status': item.status,

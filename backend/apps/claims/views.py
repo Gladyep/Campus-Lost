@@ -69,17 +69,16 @@ class ClaimViewSet(viewsets.ModelViewSet):
                 if not entry.answer_text:
                     raise ValidationError({'answer_text': 'Answers cannot be empty.'})
                 saved.append(entry)
-        if claim.status == Claim.Status.PENDING:
-            with transaction.atomic():
+            from apps.communication.services import notify_claim_answers, notify_item_status
+
+            if claim.status == Claim.Status.PENDING:
                 claim.status = Claim.Status.UNDER_VERIFICATION
                 claim.save(update_fields=('status',))
-                from apps.communication.services import notify_claim_answers, notify_item_status
-
-                notify_claim_answers(claim, request.user)
                 previous_status = claim.item.status
                 claim.item.status = Item.Status.UNDER_VERIFICATION
                 claim.item.save(update_fields=('status', 'updated_at'))
                 notify_item_status(claim.item, previous_status, request.user)
+            notify_claim_answers(claim, request.user)
         return response.Response(ClaimAnswerSerializer(saved, many=True).data, status=status.HTTP_201_CREATED)
 
     @decorators.action(detail=True, methods=('patch',), url_path='decision')
@@ -101,15 +100,26 @@ class ClaimViewSet(viewsets.ModelViewSet):
             claim.reviewed_at = timezone.now()
             claim.decision_reason = str(request.data.get('reason', '')).strip()[:500]
             claim.save(update_fields=('status', 'reviewed_by', 'reviewed_at', 'decision_reason'))
-            if previous_claim_status != next_status:
+            requested_more_information = (
+                next_status == Claim.Status.UNDER_VERIFICATION
+                and request.user.id == claim.item.reporter_id
+            )
+            if previous_claim_status != next_status or requested_more_information:
                 from apps.communication.services import notify_claimant_update
 
                 notify_claimant_update(
                     claim,
                     request.user,
-                    requested_information=(next_status == Claim.Status.UNDER_VERIFICATION and request.user.id == claim.item.reporter_id),
+                    requested_information=requested_more_information,
                 )
-            if next_status == Claim.Status.APPROVED:
+            if next_status == Claim.Status.UNDER_VERIFICATION:
+                previous_status = claim.item.status
+                claim.item.status = Item.Status.UNDER_VERIFICATION
+                claim.item.save(update_fields=('status', 'updated_at'))
+                from apps.communication.services import notify_item_status
+
+                notify_item_status(claim.item, previous_status, request.user)
+            elif next_status == Claim.Status.APPROVED:
                 previous_status = claim.item.status
                 claim.item.status = Item.Status.CLAIM_PENDING
                 claim.item.save(update_fields=('status', 'updated_at'))

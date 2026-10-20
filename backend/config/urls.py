@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from apps.accounts.views import LoginView, RegisterView, ProfileView
 from apps.claims.views import ClaimViewSet, VerificationQuestionViewSet
 from apps.communication.views import ConversationViewSet, NotificationViewSet
-from apps.items.views import CategoryViewSet, ItemViewSet, VisualSearchView, search_found_reports
+from apps.items.views import CategoryViewSet, ItemViewSet, VisualSearchView, search_item_reports
 from apps.matching.views import MatchViewSet
 from apps.moderation.views import AdminDashboardView, FlaggedClaimsView, ReportDecisionView, ReportViewSet
 
@@ -29,7 +29,7 @@ urlpatterns = [
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('api/auth/profile/', ProfileView.as_view(), name='profile'),
     path('api/visual-search/', VisualSearchView.as_view(), name='visual-search'),
-    path('api/items/search-found/', search_found_reports, name='search-found-reports'),
+    path('api/items/search-found/', search_item_reports, name='search-item-reports'),
     path('api/admin/dashboard/', AdminDashboardView.as_view(), name='admin-dashboard'),
     path('api/admin/flagged-claims/', FlaggedClaimsView.as_view(), name='flagged-claims'),
     path('api/admin/reports/<int:report_id>/decision/', ReportDecisionView.as_view(), name='report-decision'),

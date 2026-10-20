@@ -111,15 +111,75 @@ class ItemApiTests(TestCase):
         other_response = self.client.get('/api/items/?search=notebook')
         self.assertFalse(other_response.data['results'][0]['is_reporter'])
 
-    def test_search_found_returns_only_open_found_reports_with_filters(self):
+    def test_search_item_reports_filters_type_and_item_date(self):
         found = Item.objects.create(reporter=self.owner, category=self.category, title='Blue headphones', description='Blue wireless headphones', item_type=Item.Type.FOUND, location='North library', event_date=date(2026, 10, 12))
-        Item.objects.create(reporter=self.other, category=self.category, title='Lost headphones', description='Blue headphones', item_type=Item.Type.LOST, location='North library', event_date=date(2026, 10, 12))
+        lost = Item.objects.create(reporter=self.other, category=self.category, title='Lost headphones', description='Blue headphones', item_type=Item.Type.LOST, location='North library', event_date=date(2026, 10, 12))
         Item.objects.create(reporter=self.owner, category=self.category, title='Recovered headphones', description='Blue headphones', item_type=Item.Type.FOUND, location='North library', event_date=date(2026, 10, 12), status=Item.Status.RECOVERED)
 
-        response = self.client.get('/api/items/search-found/?q=headphones&category=Electronics&location=north&start_date=2026-10-10&end_date=2026-10-13')
+        response = self.client.get('/api/items/search-found/', {
+            'q': '  BLUE headphone  ',
+            'category': self.category.pk,
+            'location': ' north ',
+            'start_date': '2026-10-10',
+            'end_date': '2026-10-13',
+            'type': 'FOUND',
+        })
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual([row['id'] for row in response.json()], [found.pk])
+        lost_response = self.client.get('/api/items/search-found/', {
+            'q': 'headphones',
+            'category': self.category.name,
+            'type': 'lost',
+        })
+        self.assertEqual([row['id'] for row in lost_response.json()], [lost.pk])
+
+    def test_search_item_reports_matches_keywords_across_fields_and_both_types_by_default(self):
+        bags = Category.objects.create(name='Bags')
+        lost = Item.objects.create(
+            reporter=self.owner,
+            category=bags,
+            title='a wildcraft bag',
+            description='A blue bag left near the lab.',
+            item_type=Item.Type.LOST,
+            location='First floor, in front of the lab',
+            event_date=date(2026, 10, 12),
+        )
+        found = Item.objects.create(
+            reporter=self.other,
+            category=bags,
+            title='Blue travel bag',
+            description='Wildcraft brand backpack',
+            item_type=Item.Type.FOUND,
+            location='First floor',
+            event_date=date(2026, 10, 12),
+        )
+
+        response = self.client.get('/api/items/search-found/', {
+            'q': '  blue   wildcraft ',
+            'category': bags.pk,
+            'location': ' FIRST FLOOR ',
+            'start_date': '2026-10-12',
+            'end_date': '2026-10-12',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({row['id'] for row in response.json()}, {lost.pk, found.pk})
+        self.assertEqual({row['item_type'] for row in response.json()}, {Item.Type.LOST, Item.Type.FOUND})
+
+        exact_report = self.client.get('/api/items/search-found/', {
+            'q': ' a wildcraft bag ',
+            'category': 'Bags',
+            'type': 'LOST',
+            'start_date': '2026-10-12',
+            'end_date': '2026-10-12',
+        })
+        self.assertEqual([row['id'] for row in exact_report.json()], [lost.pk])
+
+    def test_search_item_reports_rejects_unknown_report_type(self):
+        response = self.client.get('/api/items/search-found/?type=CLAIMED')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('type', response.json())
 
     def test_search_found_rejects_invalid_date_ranges(self):
         response = self.client.get('/api/items/search-found/?start_date=2026-10-20&end_date=2026-10-10')
@@ -341,6 +401,46 @@ class ItemApiTests(TestCase):
         hidden = self.client.get(f"/api/claims/{submitted.data['id']}/")
         self.assertEqual(hidden.status_code, 404)
 
+    def test_requested_verification_updates_item_and_notifies_owner_of_answers(self):
+        from apps.claims.models import VerificationQuestion
+
+        found = Item.objects.create(reporter=self.owner, category=self.category, title='Found notebook', description='Blue notebook', item_type=Item.Type.FOUND, location='North library', event_date=date(2026, 10, 10))
+        question = VerificationQuestion.objects.create(item=found, question_text='What is one mark on the item?')
+        self.client.force_authenticate(self.other)
+        submitted = self.client.post('/api/claims/', {
+            'item': found.pk,
+            'evidence': 'I can identify the item.',
+        }, format='json')
+        self.assertEqual(submitted.status_code, 201)
+
+        self.client.force_authenticate(self.owner)
+        requested = self.client.patch(
+            f"/api/claims/{submitted.data['id']}/decision/",
+            {'status': 'UNDER_VERIFICATION'},
+            format='json',
+        )
+        self.assertEqual(requested.status_code, 200)
+        found.refresh_from_db()
+        self.assertEqual(found.status, Item.Status.UNDER_VERIFICATION)
+        self.assertTrue(Notification.objects.filter(
+            user=self.other,
+            claim_id=submitted.data['id'],
+            title='More verification information requested',
+        ).exists())
+
+        self.client.force_authenticate(self.other)
+        answers = self.client.post(
+            f"/api/claims/{submitted.data['id']}/answers/",
+            {'answers': [{'question': question.pk, 'answer_text': 'A small star on the cover.'}]},
+            format='json',
+        )
+        self.assertEqual(answers.status_code, 201)
+        owner_notice = Notification.objects.get(
+            user=self.owner,
+            claim_id=submitted.data['id'],
+            title='Verification information received',
+        )
+        self.assertNotIn('small star', owner_notice.message)
     def test_owner_delete_removes_report_and_archived_lists_no_longer_include_it(self):
         self.client.force_authenticate(self.owner)
         deleted = self.client.delete(f'/api/items/{self.item.pk}/')

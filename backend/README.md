@@ -29,7 +29,7 @@ The API is available at `http://127.0.0.1:8000/api/`. Admin is at `/admin/`. Set
 
 - `POST /api/auth/register/`, `POST /api/auth/login/`, `POST /api/auth/refresh/`, `GET/PATCH /api/auth/profile/`
 - `GET/POST /api/items/`, `GET/PATCH/DELETE /api/items/{id}/`, `GET /api/categories/`
-- `GET /api/items/search-found/` for public found-only search (`q`, `start_date`, `end_date`, `category`, `location`)
+- `GET /api/items/search-found/` for public lost-and-found search (`q`, `start_date`, `end_date`, `category` ID/name/slug, `location`, `type=LOST|FOUND|ALL`)
 - `POST /api/visual-search/` (authenticated multipart image search)
 - `GET /api/matches/`, `POST /api/claims/`, `POST /api/claims/{id}/answers/`, `PATCH /api/claims/{id}/decision/`
 - `GET/POST /api/conversations/`, `GET/POST /api/conversations/{id}/messages/`
@@ -39,7 +39,7 @@ The API is available at `http://127.0.0.1:8000/api/`. Admin is at `/admin/`. Set
 
 Item list filters include `search`, `item_type`, `category_name`, `location`, `date_after`, `date_before`, `status`, and `mine=true`. List endpoints are paginated. Matching is advisory and never approves a claim.
 
-Found-item search uses an ordinary Django GET view and ORM filters. It returns only open found reports, validates date ranges, and does not expose reporter email or other private account fields. Contact Reporter uses the existing authenticated conversations API; users can read and send messages only in conversations they participate in.
+Lost-and-found search uses an ordinary Django GET view and ORM filters. It returns open reports of both types by default; `type=LOST` or `type=FOUND` narrows the results. Each whitespace-separated keyword must match the title, description, or location (case-insensitively); category accepts its database ID, name, or slug, and date bounds apply to the item event date. The endpoint validates date ranges and does not expose reporter email or other private account fields. Contact Reporter uses the existing authenticated conversations API; users can read and send messages only in conversations they participate in.
 
 Lost reports notify the campus community; found reports notify users with qualifying lost-item matches. Match alerts, claim/verification updates, messages, report-status changes, and moderation review events are persisted for their intended recipients with deduplication keys. Notification endpoints are authenticated and recipient-scoped. The Alerts UI polls every 30 seconds and refreshes on page focus; Django Channels is not configured. The communication migrations add notification title/claim/moderation targets and make the conversation claim relationship nullable for report-only conversations. Apply migrations with `python manage.py migrate` before running the updated application. Existing notification rows are preserved.
 

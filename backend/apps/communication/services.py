@@ -56,7 +56,7 @@ def notify_new_report(item):
             message=f'{item.title} · {item.category.name} · found at {item.location} · {date_label}.',
             item=item,
             match=match,
-            dedupe_key=f'found-item-{item.pk}-lost-owner-{lost_item.reporter_id}',
+            dedupe_key=f'found-item-{item.pk}-lost-report-{lost_item.pk}-owner-{lost_item.reporter_id}',
         )
 
 
@@ -138,8 +138,25 @@ def notify_claim_answers(claim, actor):
         message=f'The claimant provided verification information for {claim.item.title}.',
         item=claim.item,
         claim=claim,
-        dedupe_key=f'claim-answers-{claim.pk}-{claim.status}',
+        dedupe_key=(
+            f'claim-answers-{claim.pk}-'
+            f'{claim.reviewed_at.isoformat() if claim.reviewed_at else "initial"}'
+        ),
     )
+
+
+def notify_new_message(message, actor):
+    conversation = message.conversation
+    for recipient in conversation.participants.exclude(pk=actor.pk):
+        create_notification(
+            recipient=recipient,
+            kind=Notification.Kind.MESSAGE,
+            title=f'New message about {conversation.item.title[:100]}',
+            message='A campus member sent a message about this item report.',
+            item=conversation.item,
+            conversation=conversation,
+            dedupe_key=f'message-{message.pk}-{recipient.pk}',
+        )
 
 
 def notify_moderation_report_created(report, actor):

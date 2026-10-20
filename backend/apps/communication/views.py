@@ -112,16 +112,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
             message = Message.objects.create(conversation=conversation, sender=request.user, message_text=text)
             conversation.updated_at = timezone.now()
             conversation.save(update_fields=('updated_at',))
-            for recipient in conversation.participants.exclude(pk=request.user.pk):
-                Notification.objects.get_or_create(
-                    dedupe_key=f'message-{message.pk}-{recipient.pk}',
-                    defaults={
-                        'user': recipient,
-                        'kind': Notification.Kind.MESSAGE,
-                        'title': f'New message about {conversation.item.title[:100]}',
-                        'message': 'A campus member sent a message about this item report.',
-                        'item': conversation.item,
-                        'conversation': conversation,
-                    },
-                )
+            from .services import notify_new_message
+
+            notify_new_message(message, request.user)
         return response.Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)

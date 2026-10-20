@@ -114,7 +114,9 @@ function App() {
     const refreshUnreadCount = () => {
       getUnreadNotificationCount(auth.access).then(({ count }) => {
         if (active) setNotificationUnreadCount(count || 0)
-      }).catch(() => {})
+      }).catch((error) => {
+        if (active) setNotice(error.message || 'Could not refresh your notification count.')
+      })
     }
     refreshUnreadCount()
     const intervalId = window.setInterval(refreshUnreadCount, 30000)
@@ -432,8 +434,9 @@ function App() {
   async function clearReadAlerts() {
     if (!window.confirm('Delete all read notifications?')) return
     try {
-      await clearReadNotifications(auth?.access)
+      const result = await clearReadNotifications(auth?.access)
       setResourceRows((rows) => rows.filter((row) => !row.is_read))
+      setNotificationTotal((count) => Math.max(0, count - (result?.deleted || 0)))
       setResourceRefresh((count) => count + 1)
     } catch (error) {
       setNotice(error.message)
